@@ -11,6 +11,8 @@ from scipy.sparse.linalg import lsmr
 from matplotlib.animation import FuncAnimation
 import datetime
 from tempfile import NamedTemporaryFile
+import random
+import plotly.graph_objects as go
 
 
 def get_corr(vector1, vector2):
@@ -112,7 +114,6 @@ class Forecast():
                 )
 
 
-
     def make_picture(self, mslp, title=""):
         fig = plt.figure(figsize=(10, 5))
         ax = fig.add_subplot(1, 1, 1, projection=ccrs.PlateCarree())
@@ -152,3 +153,40 @@ class Forecast():
     
         anim = FuncAnimation(fig, update, frames=range(mslp.shape[0]), interval=500, blit=True)
         anim.save('forecast.gif')
+
+    
+    def test(self, interval, tests_count, method):
+        def random_date(start, end):
+            return start + datetime.timedelta(days=random.randint(0, (end - start).days))
+
+        corr_array = []
+        rmse_array = []
+        for duration in range(interval[0], interval[1] + 1):
+            self.duration = duration
+            corr_array.append(0)
+            rmse_array.append(0)
+            for attemp in range(tests_count):
+                self.date = random_date(datetime.date(2001, 1, 1), datetime.date(2021, 12, 31))
+                if method == "Natural analogue":
+                    prediction = (self.natural_analogue())[1][-1]
+                elif method == "Calculated analogue":
+                    prediction = (self.calculated_analogue())[1][-1]
+                if self.data == "daily_mslp.nc":
+                    strdate = self.date.strftime("%Y-%m-%d")
+                elif self.data == "monthly_mslp.nc":
+                    strdate = self.date.strftime("%Y-%m")
+                real = xr.open_dataset(self.data).sel(time=strdate)['mslp'].values
+                corr_array[-1] += get_corr(real.flatten(), prediction.flatten())
+                rmse_array[-1] += get_rmse(real.flatten(), prediction.flatten())
+            corr_array[-1] /= tests_count
+            rmse_array[-1] /= tests_count
+        fig1 = go.Figure()
+        fig1.add_trace(go.Scatter(x=list(range(interval[0], interval[1] + 1)), y=corr_array))
+        fig1.update_layout(xaxis_title="duration", yaxis_title="correlation", title_text="Correlation graphic")
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter(x=list(range(interval[0], interval[1] + 1)), y=rmse_array, name='rmse'))
+        fig2.update_layout(xaxis_title="duration", yaxis_title="rmse", title_text="RMSE graphic")
+        return (fig1, fig2)
+                    
+                
+            
